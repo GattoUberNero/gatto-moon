@@ -220,7 +220,7 @@ func (a *OpenAIAdapter) FromCoreResponse(ctx context.Context, resp *format.CoreR
 					Type:   "reasoning",
 					Status: "completed",
 					Summary: []ReasoningItemSummary{
-						{Type: "text", Text: block.ReasoningText, Signature: block.ReasoningSignature},
+						{Type: "text", Text: "**Thinking**\n" + block.ReasoningText, Signature: block.ReasoningSignature},
 					},
 				})
 
@@ -482,7 +482,7 @@ func (a *OpenAIAdapter) streamLoopWithBuf(ctx context.Context, coreReq *format.C
 			case "reasoning":
 				id := fmt.Sprintf("rs_item_%d", index)
 				itemIDs[index] = id
-				contentText[index] = ""
+				contentText[index] = "**Thinking**\n"
 				reasonIndexes[index] = true
 				io := len(response.Output)
 				outputIndexes[index] = io
@@ -511,7 +511,19 @@ func (a *OpenAIAdapter) streamLoopWithBuf(ctx context.Context, coreReq *format.C
 						SummaryIndex:   0,
 					},
 				})
-				contentText[index] = ""
+				// Prepend a bold header so Codex renders reasoning in the live chat view.
+				send(StreamEvent{
+					Event: "response.reasoning_summary_text.delta",
+					Data: ReasoningSummaryTextDeltaEvent{
+						Type:           "response.reasoning_summary_text.delta",
+						SequenceNumber: next(),
+						ItemID:         id,
+						OutputIndex:    io,
+						SummaryIndex:   0,
+						Delta:          "**Thinking**\n",
+					},
+				})
+				contentText[index] = "**Thinking**\n"
 			case "tool_use":
 				toolUseID := event.ContentBlock.ToolUseID
 				if toolUseID == "" {
