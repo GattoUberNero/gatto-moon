@@ -1132,12 +1132,33 @@ type inputItem struct {
 	Summary   json.RawMessage `json:"summary"`
 	CallID    string          `json:"call_id"`
 	Name      string          `json:"name"`
-	Arguments string          `json:"arguments"`
+	Arguments jsonString      `json:"arguments"`
 	Output    json.RawMessage `json:"output"`
 	Input     string          `json:"input"`
 	Action    *ToolAction     `json:"action,omitempty"`
 	ID        string          `json:"id"`
 	Status    string          `json:"status"`
+}
+
+// jsonString accepts both OpenAI's string-encoded tool arguments and rollout
+// history items that store arguments as native JSON.
+type jsonString string
+
+func (s *jsonString) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*s = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*s = jsonString(text)
+		return nil
+	}
+	if !json.Valid(data) {
+		return fmt.Errorf("invalid JSON arguments")
+	}
+	*s = jsonString(string(data))
+	return nil
 }
 
 // convertInput parses OpenAI Input (string or array) into Core messages and system blocks.
@@ -1280,8 +1301,9 @@ func convertInput(raw json.RawMessage, model string) ([]format.CoreMessage, []fo
 				pendingFCBlocks = append(pendingFCBlocks, pendingReasoning...)
 				pendingReasoning = pendingReasoning[:0]
 			}
-			toolInput := json.RawMessage(item.Arguments)
-			if !json.Valid([]byte(item.Arguments)) {
+			arguments := string(item.Arguments)
+			toolInput := json.RawMessage(arguments)
+			if !json.Valid([]byte(arguments)) {
 				toolInput = json.RawMessage(`{}`)
 			}
 			pendingFCBlocks = append(pendingFCBlocks, format.CoreContentBlock{
@@ -1296,8 +1318,9 @@ func convertInput(raw json.RawMessage, model string) ([]format.CoreMessage, []fo
 				pendingFCBlocks = append(pendingFCBlocks, pendingReasoning...)
 				pendingReasoning = pendingReasoning[:0]
 			}
-			toolInput := json.RawMessage(item.Arguments)
-			if !json.Valid([]byte(item.Arguments)) {
+			arguments := string(item.Arguments)
+			toolInput := json.RawMessage(arguments)
+			if !json.Valid([]byte(arguments)) {
 				if item.Input != "" {
 					toolInput, _ = json.Marshal(map[string]string{"input": item.Input})
 				} else {

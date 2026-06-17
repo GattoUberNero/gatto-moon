@@ -218,6 +218,48 @@ func TestToCoreRequest_ReasoningModelInjectsEmptyReasoningBeforeFunctionCall(t *
 	}
 }
 
+func TestToCoreRequest_FunctionCallArgumentsObject(t *testing.T) {
+	adapter := openai.NewOpenAIAdapter(format.CorePluginHooks{})
+	req := &openai.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get_weather","arguments":{"city":"Paris"}}
+		]`),
+	}
+	result, err := adapter.ToCoreRequest(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 || len(result.Messages[0].Content) != 1 {
+		t.Fatalf("messages=%+v, want one assistant tool call", result.Messages)
+	}
+	block := result.Messages[0].Content[0]
+	if block.Type != "tool_use" || block.ToolUseID != "call_1" || block.ToolName != "get_weather" {
+		t.Fatalf("tool block=%+v", block)
+	}
+	if string(block.ToolInput) != `{"city":"Paris"}` {
+		t.Fatalf("tool input=%s, want object arguments preserved", block.ToolInput)
+	}
+}
+
+func TestToCoreRequest_IgnoresToolSearchCallWithObjectArguments(t *testing.T) {
+	adapter := openai.NewOpenAIAdapter(format.CorePluginHooks{})
+	req := &openai.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"type":"tool_search_call","call_id":"call_search","status":"completed","execution":"client","arguments":{"query":"multi_file_reader","limit":5}},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+		]`),
+	}
+	result, err := adapter.ToCoreRequest(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Messages) != 1 || result.Messages[0].Role != "user" {
+		t.Fatalf("messages=%+v, want user message after ignored tool_search_call", result.Messages)
+	}
+}
+
 func TestToCoreRequest_KeepsToolUseAdjacentToToolResultWhenReasoningPrecedesOutput(t *testing.T) {
 	adapter := openai.NewOpenAIAdapter(format.CorePluginHooks{})
 	req := &openai.ResponsesRequest{
