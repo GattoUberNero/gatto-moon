@@ -89,6 +89,10 @@ type OutputItem struct {
 	Input     string                 `json:"input,omitempty"`
 	Action    *ToolAction            `json:"action,omitempty"`
 	Summary   []ReasoningItemSummary `json:"summary,omitempty"`
+	// Codex 0.140 requires this field to be present on reasoning items when
+	// deserializing Responses API stream items, even when the provider has no
+	// encrypted reasoning payload to preserve.
+	EncryptedContent json.RawMessage `json:"encrypted_content,omitempty"`
 }
 
 // ToolAction describes an action associated with a tool.

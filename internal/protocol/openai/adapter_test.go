@@ -371,3 +371,73 @@ func TestFromCoreStream_NoDuplicateDoneForToolUse(t *testing.T) {
 		t.Fatalf("output_item.done (tool) count=%d, want 1", itemDone)
 	}
 }
+
+func TestFromCoreStream_ReasoningEmitsOutputItemDone(t *testing.T) {
+	adapter := openai.NewOpenAIAdapter(format.CorePluginHooks{})
+	coreReq := &format.CoreRequest{Model: "deepseek-v4-pro"}
+	evCh := make(chan format.CoreStreamEvent, 8)
+	evCh <- format.CoreStreamEvent{
+		Type:  format.CoreContentBlockStarted,
+		Index: 0,
+		ContentBlock: &format.CoreContentBlock{
+			Type:               "reasoning",
+			ReasoningSignature: "sig_1",
+		},
+	}
+	evCh <- format.CoreStreamEvent{Type: format.CoreTextDelta, Index: 0, Delta: "inspect"}
+	evCh <- format.CoreStreamEvent{
+		Type:  format.CoreContentBlockDone,
+		Index: 0,
+		ContentBlock: &format.CoreContentBlock{
+			Type:               "reasoning",
+			ReasoningSignature: "sig_1",
+		},
+	}
+	evCh <- format.CoreStreamEvent{Type: format.CoreEventCompleted, Status: "completed"}
+	close(evCh)
+
+	streamAny, err := adapter.FromCoreStream(context.Background(), coreReq, evCh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oaiResult, ok := streamAny.(*openai.OpenAIStreamResult)
+	if !ok {
+		t.Fatalf("stream result type=%T, want *OpenAIStreamResult", streamAny)
+	}
+
+	var sawAdded bool
+	var sawDelta bool
+	var doneItem *openai.OutputItem
+	for ev := range oaiResult.Chan() {
+		switch ev.Event {
+		case "response.output_item.added":
+			if data, ok := ev.Data.(openai.OutputItemEvent); ok && data.Item.Type == "reasoning" {
+				sawAdded = true
+			}
+		case "response.reasoning_summary_text.delta":
+			if data, ok := ev.Data.(openai.ReasoningSummaryTextDeltaEvent); ok && data.Delta == "inspect" {
+				sawDelta = true
+			}
+		case "response.output_item.done":
+			if data, ok := ev.Data.(openai.OutputItemEvent); ok && data.Item.Type == "reasoning" {
+				item := data.Item
+				doneItem = &item
+			}
+		}
+	}
+	if !sawAdded {
+		t.Fatal("missing response.output_item.added for reasoning")
+	}
+	if !sawDelta {
+		t.Fatal("missing response.reasoning_summary_text.delta for reasoning text")
+	}
+	if doneItem == nil {
+		t.Fatal("missing response.output_item.done for reasoning")
+	}
+	if doneItem.Status != "completed" {
+		t.Fatalf("done item status=%q, want completed", doneItem.Status)
+	}
+	if len(doneItem.Summary) != 1 || doneItem.Summary[0].Text != "**Thinking**\ninspect" || doneItem.Summary[0].Signature != "sig_1" {
+		t.Fatalf("done item summary=%+v, want completed reasoning summary", doneItem.Summary)
+	}
+}

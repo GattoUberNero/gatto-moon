@@ -217,10 +217,11 @@ func (a *OpenAIAdapter) FromCoreResponse(ctx context.Context, resp *format.CoreR
 
 			case "reasoning":
 				output = append(output, OutputItem{
-					Type:   "reasoning",
-					Status: "completed",
+					Type:             "reasoning",
+					Status:           "completed",
+					EncryptedContent: json.RawMessage("null"),
 					Summary: []ReasoningItemSummary{
-						{Type: "text", Text: "**Thinking**\n" + block.ReasoningText, Signature: block.ReasoningSignature},
+						{Type: "summary_text", Text: "**Thinking**\n" + block.ReasoningText, Signature: block.ReasoningSignature},
 					},
 				})
 
@@ -487,10 +488,11 @@ func (a *OpenAIAdapter) streamLoopWithBuf(ctx context.Context, coreReq *format.C
 				io := len(response.Output)
 				outputIndexes[index] = io
 				response.Output = append(response.Output, OutputItem{
-					Type:    "reasoning",
-					ID:      id,
-					Status:  "in_progress",
-					Summary: []ReasoningItemSummary{},
+					Type:             "reasoning",
+					ID:               id,
+					Status:           "in_progress",
+					Summary:          []ReasoningItemSummary{{Type: "summary_text", Text: ""}},
+					EncryptedContent: json.RawMessage("null"),
 				})
 				send(StreamEvent{
 					Event: "response.output_item.added",
@@ -944,7 +946,7 @@ func (a *OpenAIAdapter) streamLoopWithBuf(ctx context.Context, coreReq *format.C
 						sig = event.ContentBlock.ReasoningSignature
 					}
 					response.Output[idx].Summary = []ReasoningItemSummary{{
-						Type:      "text",
+						Type:      "summary_text",
 						Text:      contentText[index],
 						Signature: sig,
 					}}
@@ -959,6 +961,17 @@ func (a *OpenAIAdapter) streamLoopWithBuf(ctx context.Context, coreReq *format.C
 						SummaryIndex:   0,
 					},
 				})
+				if idx, ok := outputIndexes[index]; ok && idx < len(response.Output) {
+					send(StreamEvent{
+						Event: "response.output_item.done",
+						Data: OutputItemEvent{
+							Type:           "response.output_item.done",
+							SequenceNumber: next(),
+							OutputIndex:    idx,
+							Item:           response.Output[idx],
+						},
+					})
+				}
 				delete(contentText, index)
 				delete(itemIDs, index)
 				delete(outputIndexes, index)
