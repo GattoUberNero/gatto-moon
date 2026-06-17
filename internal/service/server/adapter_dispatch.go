@@ -658,6 +658,7 @@ func (s *Server) handleWithAdapters(
 	// 8. Write the response.
 	// ------------------------------------------------------------------
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Reasoning-Included", "true")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(out)
 
@@ -1533,6 +1534,7 @@ func (s *Server) handleAdapterStream(
 	// Write SSE events.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Reasoning-Included", "true")
 	w.WriteHeader(http.StatusOK)
 
 	// Track usage from the final response.completed event.
@@ -1823,6 +1825,7 @@ func (s *Server) writeCoreResponseAsOpenAIStream(
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Reasoning-Included", "true")
 	w.WriteHeader(http.StatusOK)
 
 	var finalResp *openai.Response
